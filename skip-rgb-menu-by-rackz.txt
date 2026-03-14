@@ -1,0 +1,215 @@
+(function(){
+
+/* ---------- FIND COLOR INPUT ---------- */
+function findColorInput(){
+    return document.querySelector('input[type="color"]')
+        || document.querySelector('input[title="color"]')
+        || document.querySelector('input');
+}
+
+const input = findColorInput();
+if(!input){ console.warn("Open the color picker first."); return; }
+
+/* ---------- CORE VARIABLES ---------- */
+let speed = 2, currentInterval = null, mode = "", h = 0, minimized = false;
+
+/* ---------- COLOR ENGINE ---------- */
+function setColor(hex){
+    const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,"value"
+    ).set;
+    setter.call(input,hex);
+    input.dispatchEvent(new Event("input",{bubbles:true}));
+    input.dispatchEvent(new Event("change",{bubbles:true}));
+    panel.style.boxShadow = `0 0 20px ${hex}, 0 0 40px ${hex}80, 0 0 60px ${hex}40`;
+}
+
+function hslToHex(h,s,l){
+    l/=100; const a = s*Math.min(l,1-l)/100;
+    const f=n=>{const k=(n+h/30)%12; const color=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*color).toString(16).padStart(2,"0");};
+    return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/* ---------- MODE SYSTEM ---------- */
+function startMode(name,logic){ stopMode(); mode=name; currentInterval=setInterval(logic,40); }
+function stopMode(){ clearInterval(currentInterval); mode=""; }
+
+/* ---------- PANEL ---------- */
+const panel = document.createElement("div");
+panel.style.cssText=`
+position:fixed;
+bottom:30px;
+left:50%;
+transform:translateX(-50%);
+width:320px;
+background:rgba(30,30,40,0.85);
+backdrop-filter:blur(10px);
+border-radius:20px;
+padding:14px;
+z-index:9999;
+font-family:'Segoe UI',sans-serif;
+color:white;
+box-shadow:0 12px 40px rgba(0,0,0,0.6);
+border:1px solid rgba(255,255,255,0.1);
+transition:all 0.3s ease;
+`;
+
+/* ---------- GRID ---------- */
+const grid = document.createElement("div");
+grid.style.cssText=`display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:10px;`;
+
+/* ---------- STOP BUTTON ---------- */
+const stopBtn = document.createElement("button");
+stopBtn.innerText="STOP";
+stopBtn.style.cssText=`
+width:100%; padding:8px; border:none; border-radius:10px;
+background:#ff4444; color:white; font-weight:700; cursor:pointer;
+`;
+stopBtn.onclick=stopMode;
+
+/* ---------- SPEED CONTROL ---------- */
+const speedBox = document.createElement("div");
+speedBox.style.cssText=`display:flex; gap:8px; margin-top:8px;`;
+const label = document.createElement("span");
+label.innerText="Speed"; label.style.fontSize="11px";
+const slider = document.createElement("input");
+slider.type="range"; slider.min="0.1"; slider.max="25"; slider.step="0.1"; slider.value=speed; slider.style.flex="1";
+slider.oninput=()=>speed=parseFloat(slider.value);
+speedBox.append(label,slider);
+
+/* ---------- SAVE/LOAD ---------- */
+const saveBtn = document.createElement("button");
+saveBtn.innerText="Save Current Color";
+saveBtn.style.cssText=`width:100%; margin-top:8px; padding:6px; border:none; border-radius:8px; background:#444; color:white; cursor:pointer;`;
+saveBtn.onclick=()=>localStorage.setItem("rackzColor",input.value);
+
+const loadBtn = document.createElement("button");
+loadBtn.innerText="Load Saved Color";
+loadBtn.style.cssText=saveBtn.style.cssText;
+loadBtn.onclick=()=>{
+    const c=localStorage.getItem("rackzColor");
+    if(c) setColor(c);
+};
+
+/* ---------- TITLE BAR ---------- */
+const title = document.createElement("div");
+title.innerHTML = "🎨 Rackz Color FX V6";
+title.style.cssText=`
+font-weight:700; margin-bottom:10px; cursor:move;
+display:flex; justify-content:space-between; align-items:center;
+padding:4px 8px; border-radius:16px 16px 0 0; color:white;
+text-shadow:0 0 5px rgba(255,255,255,0.4); user-select:none;
+`;
+
+/* ---------- BUTTONS ---------- */
+const buttonContainer = document.createElement("div"); buttonContainer.style.cssText="display:flex; gap:4px;";
+const minBtn = document.createElement("button"); minBtn.innerText="—"; minBtn.title="Minimize";
+const closeBtn = document.createElement("button"); closeBtn.innerText="✖"; closeBtn.title="Close";
+minBtn.style.cssText=closeBtn.style.cssText=`border:none; background:rgba(255,255,255,0.1); color:white; border-radius:6px; cursor:pointer; width:28px; height:28px; font-weight:bold; transition:0.2s;`;
+minBtn.onmouseover=closeBtn.onmouseover=e=>e.target.style.background='rgba(255,255,255,0.25)';
+minBtn.onmouseout=closeBtn.onmouseout=e=>e.target.style.background='rgba(255,255,255,0.1)';
+
+minBtn.onclick=()=>{
+    minimized = !minimized;
+    grid.style.display = minimized?"none":"grid";
+    speedBox.style.display = minimized?"none":"flex";
+    stopBtn.style.display = minimized?"none":"block";
+    saveBtn.style.display = minimized?"none":"block";
+    loadBtn.style.display = minimized?"none":"block";
+};
+closeBtn.onclick=()=>{ stopMode(); panel.remove(); };
+
+buttonContainer.appendChild(minBtn);
+buttonContainer.appendChild(closeBtn);
+title.appendChild(buttonContainer);
+panel.appendChild(title);
+
+/* ---------- TOP BAR RAINBOW ---------- */
+let rainbowHue=0;
+function animateTitleRainbow(){
+    rainbowHue=(rainbowHue+1)%360;
+    title.style.background=`linear-gradient(90deg,
+        hsl(${rainbowHue},100%,50%),
+        hsl(${(rainbowHue+60)%360},100%,50%),
+        hsl(${(rainbowHue+120)%360},100%,50%),
+        hsl(${(rainbowHue+180)%360},100%,50%),
+        hsl(${(rainbowHue+240)%360},100%,50%)
+    )`;
+    requestAnimationFrame(animateTitleRainbow);
+}
+animateTitleRainbow();
+
+/* ---------- DRAGGING ---------- */
+let dragging=false, offsetX=0, offsetY=0;
+title.onmousedown = e => {
+    dragging = true;
+    const rect = panel.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    panel.style.bottom = "auto";  // remove bottom so top works
+    panel.style.transform = "none"; // remove transform to allow free dragging
+};
+
+document.onmousemove = e => {
+    if(!dragging) return;
+    panel.style.left = (e.clientX - offsetX) + "px";
+    panel.style.top = (e.clientY - offsetY) + "px";
+};
+
+document.onmouseup = () => {
+    dragging = false;
+};
+
+/* ---------- MODE BUTTON CREATOR ---------- */
+function addMode(name,logic,hotkey){
+    const b=document.createElement("button"); b.innerText=name;
+    b.style.cssText=`padding:6px; border:none; border-radius:12px; background:linear-gradient(45deg,#444,#222); color:white; font-size:11px; cursor:pointer; transition:0.2s;`;
+    b.onmouseover=e=>e.target.style.background='linear-gradient(45deg,#ff4b1f,#ff9068)';
+    b.onmouseout=e=>e.target.style.background='linear-gradient(45deg,#444,#222)';
+    b.onclick=()=>startMode(name,logic);
+    grid.appendChild(b);
+    if(hotkey) document.addEventListener("keydown",e=>{ if(e.key===hotkey) startMode(name,logic); });
+}
+
+/* ---------- MODES ---------- */
+addMode("RAIN",()=>{h=(h+speed)%360; setColor(hslToHex(h,100,50));},"1");
+addMode("RAVE",()=>{h=(h+speed*15)%360; setColor(hslToHex(h,100,50));},"2");
+addMode("WAVE",()=>{h=(h+speed)%360; setColor(hslToHex(h,100,50+Math.sin(h/20)*20));});
+addMode("GALAXY",()=>{h=(h+speed)%360; setColor(hslToHex(240+Math.sin(h/15)*80,100,60));});
+addMode("OCEAN",()=>{h=(h+speed)%100; setColor(hslToHex(180+h/2,100,50));});
+addMode("ICE",()=>{h=(h+speed)%50; setColor(hslToHex(190+h,80,80));});
+addMode("LAVA",()=>{h=(h+speed)%60; setColor(hslToHex(h,100,50));});
+addMode("FIRE",()=>{const c=Math.random()>.5?"#ff4000":"#ff9000"; setColor(c);});
+addMode("STROBE",()=>{const c=Math.random()>.5?"#ffffff":"#000000"; setColor(c);});
+addMode("GLITCH",()=>{const c=`#${Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")}`; setColor(c);});
+addMode("CANDY",()=>{h=(h+speed*.6)%360; setColor(hslToHex(h,80,70));});
+addMode("NEON",()=>{h=(h+speed)%360; setColor(hslToHex(h,100,65));});
+addMode("TOXIC",()=>{h=(h+speed)%40; setColor(hslToHex(100+h,100,50));});
+addMode("VOID",()=>{const c=Math.random()>.5?"#000000":"#220022"; setColor(c);});
+    
+// Extra modes
+addMode("B&W", () => {
+    // Smooth black-white using sine wave
+    const l = 50 + Math.sin(h/10)*50; // ranges from 0 to 100
+    setColor(hslToHex(0,0,l)); // 0 saturation = grayscale
+    h = (h + speed) % 360;
+}, "3");
+addMode("PULSE",()=>{h=(h+speed)%360; const l=50+Math.sin(h/10)*40; setColor(hslToHex(0,0,l));});
+addMode("SUNSET",()=>{h=(h+speed)%100; setColor(hslToHex(10+h/2,100,60));});
+addMode("FOREST",()=>{h=(h+speed)%60; setColor(hslToHex(110+h,70,40));});
+addMode("GOLD",()=>{h=(h+speed)%30; setColor(hslToHex(45+h,90,60));});
+addMode("PASTEL",()=>{h=(h+speed*.5)%360; setColor(hslToHex(h,60,80));});
+addMode("BERRY",()=>{h=(h+speed)%60; setColor(hslToHex(320+h,80,55));});
+addMode("CYBER",()=>{const colors=["#00ffff","#ff00ff","#00ff9f","#ff0088"]; setColor(colors[Math.floor(Math.random()*colors.length)]);});
+addMode("STORM",()=>{const colors=["#222222","#444444","#666666","#aaaaaa"]; setColor(colors[Math.floor(Math.random()*colors.length)]);});
+addMode("LASER",()=>{const colors=["#ff0000","#00ff00","#00ffff"]; setColor(colors[Math.floor(Math.random()*colors.length)]);});
+    
+/* ---------- BUILD PANEL ---------- */
+panel.appendChild(grid);
+panel.appendChild(stopBtn);
+panel.appendChild(speedBox);
+panel.appendChild(saveBtn);
+panel.appendChild(loadBtn);
+document.body.appendChild(panel);
+
+})();
