@@ -1,215 +1,534 @@
 (function(){
+let s=2,r=40,a=null,h=0,l=0,d=1,m="",ceil=100,floor=0;
 
-/* ---------- FIND COLOR INPUT ---------- */
-function findColorInput(){
-    return document.querySelector('input[type="color"]')
-        || document.querySelector('input[title="color"]')
-        || document.querySelector('input');
+// Find the color input (optional)
+const i = document.querySelector('input[type="color"]') || document.querySelector('input[title="color"]') || null;
+// Panel will work even if i is null
+// =========================
+// 🔊 SOUND FX ADDED
+// =========================
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioCtx();
+
+function resumeAudio(){
+  if(audioCtx.state === "suspended") audioCtx.resume();
 }
 
-const input = findColorInput();
-if(!input){ console.warn("Open the color picker first."); return; }
+function tone(freq=440,duration=0.08,type="sine",volume=0.02,slideTo=null){
+  resumeAudio();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
 
-/* ---------- CORE VARIABLES ---------- */
-let speed = 2, currentInterval = null, mode = "", h = 0, minimized = false;
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
 
-/* ---------- COLOR ENGINE ---------- */
-function setColor(hex){
-    const setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,"value"
-    ).set;
-    setter.call(input,hex);
-    input.dispatchEvent(new Event("input",{bubbles:true}));
-    input.dispatchEvent(new Event("change",{bubbles:true}));
-    panel.style.boxShadow = `0 0 20px ${hex}, 0 0 40px ${hex}80, 0 0 60px ${hex}40`;
+  if(slideTo){
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), audioCtx.currentTime + duration);
+  }
+
+  gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), audioCtx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
 }
 
-function hslToHex(h,s,l){
-    l/=100; const a = s*Math.min(l,1-l)/100;
-    const f=n=>{const k=(n+h/30)%12; const color=l-a*Math.max(Math.min(k-3,9-k,1),-1); return Math.round(255*color).toString(16).padStart(2,"0");};
-    return `#${f(0)}${f(8)}${f(4)}`;
+function playClick(){
+  tone(950,0.04,"square",0.02,760);
+  setTimeout(()=>tone(1250,0.03,"triangle",0.014,1050),18);
 }
 
-/* ---------- MODE SYSTEM ---------- */
-function startMode(name,logic){ stopMode(); mode=name; currentInterval=setInterval(logic,40); }
-function stopMode(){ clearInterval(currentInterval); mode=""; }
+function playOpen(){
+  tone(240,0.08,"sawtooth",0.02,420);
+  setTimeout(()=>tone(540,0.07,"triangle",0.016,820),45);
+}
 
-/* ---------- PANEL ---------- */
-const panel = document.createElement("div");
-panel.style.cssText=`
-position:fixed;
-bottom:30px;
-left:50%;
-transform:translateX(-50%);
-width:320px;
-background:rgba(30,30,40,0.85);
-backdrop-filter:blur(10px);
-border-radius:20px;
-padding:14px;
-z-index:9999;
-font-family:'Segoe UI',sans-serif;
-color:white;
-box-shadow:0 12px 40px rgba(0,0,0,0.6);
-border:1px solid rgba(255,255,255,0.1);
-transition:all 0.3s ease;
+function playClose(){
+  tone(820,0.08,"triangle",0.018,460);
+  setTimeout(()=>tone(420,0.07,"sine",0.012,180),45);
+}
+
+function playModeStart(){
+  tone(220,0.06,"sawtooth",0.018,330);
+  setTimeout(()=>tone(440,0.06,"triangle",0.014,660),45);
+}
+
+function playModeStop(){
+  tone(660,0.05,"square",0.012,320);
+}
+
+let humInterval = null;
+function startHum(){
+  stopHum();
+  humInterval = setInterval(()=>{
+    if(!m) return;
+    let base = 180;
+    if(m === "rain") base = 160 + (h % 120);
+    else if(m === "bw") base = 120 + Math.floor(l * 1.8);
+    else base = 150 + ((Date.now()/20) % 120);
+    tone(base,0.045,"sine",0.0045,base+20);
+  },220);
+}
+function stopHum(){
+  if(humInterval){
+    clearInterval(humInterval);
+    humInterval = null;
+  }
+}
+
+// ✅ Add keyframes for RGB border
+var style = document.createElement("style");
+style.type = "text/css";
+style.appendChild(document.createTextNode(`
+@keyframes rainbowBorder {
+  0% { background-position: 0%; }
+  100% { background-position: 400%; }
+}
+@keyframes rainbowTitle{0%{background-position:0%}100%{background-position:400%}}
+button.active{
+border-color:#00ffff !important;
+box-shadow:0 0 15px #00ffff,0 0 25px #00ffff;
+transform:scale(1.05);
+}
+button:hover{
+  border:2px solid transparent;
+  background-image: linear-gradient(#0f0f0f,#0f0f0f), 
+                    linear-gradient(90deg,#ff00ff,#00ffff,#00ff00,#ffff00,#ff00ff);
+  background-origin: border-box;
+  background-clip: content-box, border-box;
+  animation: rainbowBorder 3s linear infinite;
+}
+`));
+document.head.appendChild(style);
+
+// ✅ Create RGB border wrapper
+var wrap = document.createElement("div");
+wrap.style.cssText = `
+position: fixed;
+top: 200px;
+left: 200px;
+padding: 3px;
+border-radius: 20px;
+background: linear-gradient(90deg,#ff0000,#ff9900,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000);
+background-size: 400%;
+animation: rainbowBorder 6s linear infinite;
+box-sizing: content-box;
+z-index: 9999;
 `;
 
-/* ---------- GRID ---------- */
-const grid = document.createElement("div");
-grid.style.cssText=`display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:10px;`;
-
-/* ---------- STOP BUTTON ---------- */
-const stopBtn = document.createElement("button");
-stopBtn.innerText="STOP";
-stopBtn.style.cssText=`
-width:100%; padding:8px; border:none; border-radius:10px;
-background:#ff4444; color:white; font-weight:700; cursor:pointer;
+// ✅ Create the panel
+var c = document.createElement("div");
+c.style.cssText=`
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:6px;
+position: relative;
+background: rgba(15,15,20,0.85);
+backdrop-filter: blur(25px);
+padding:16px;
+border-radius:16px;
+font-family:Rubik,sans-serif;
+min-width:420px;
+user-select:none;
+overflow:hidden;
 `;
-stopBtn.onclick=stopMode;
 
-/* ---------- SPEED CONTROL ---------- */
-const speedBox = document.createElement("div");
-speedBox.style.cssText=`display:flex; gap:8px; margin-top:8px;`;
-const label = document.createElement("span");
-label.innerText="Speed"; label.style.fontSize="11px";
-const slider = document.createElement("input");
-slider.type="range"; slider.min="0.1"; slider.max="25"; slider.step="0.1"; slider.value=speed; slider.style.flex="1";
-slider.oninput=()=>speed=parseFloat(slider.value);
-speedBox.append(label,slider);
+// Put panel inside wrapper and insert into DOM
+wrap.appendChild(c);
+i.parentNode.insertBefore(wrap,i.nextSibling);
+  
+// Toggle menu visibility with ESC
+let menuVisible = true; // track current state
 
-/* ---------- SAVE/LOAD ---------- */
-const saveBtn = document.createElement("button");
-saveBtn.innerText="Save Current Color";
-saveBtn.style.cssText=`width:100%; margin-top:8px; padding:6px; border:none; border-radius:8px; background:#444; color:white; cursor:pointer;`;
-saveBtn.onclick=()=>localStorage.setItem("rackzColor",input.value);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    menuVisible = !menuVisible;
+    wrap.style.display = menuVisible ? 'block' : 'none';
+  }
+});
+  
+// 🔊 panel open sound
+playOpen();
+  
+// ✅ Vibe-matching RGB cursor particles
+const particles = [];
+const maxParticles = 40;
+c.style.position = 'relative';
 
-const loadBtn = document.createElement("button");
-loadBtn.innerText="Load Saved Color";
-loadBtn.style.cssText=saveBtn.style.cssText;
-loadBtn.onclick=()=>{
-    const c=localStorage.getItem("rackzColor");
-    if(c) setColor(c);
-};
+const particleContainer = document.createElement('div');
+particleContainer.style.cssText = `
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+`;
+c.appendChild(particleContainer);
 
-/* ---------- TITLE BAR ---------- */
-const title = document.createElement("div");
-title.innerHTML = "🎨 Rackz Color FX V6";
+// Particle class
+class Particle {
+  constructor(x, y, hue) {
+    this.x = x + (Math.random() - 0.5) * 10;
+    this.y = y;
+    this.size = 4 + Math.random() * 4;
+    this.life = 40 + Math.random() * 30;
+    this.vx = (Math.random() - 0.5) * 1;
+    this.vy = 1 + Math.random() * 2;
+    this.hue = hue;
+    this.el = document.createElement('div');
+    this.el.style.cssText = `
+      position: absolute;
+      left: ${this.x}px;
+      top: ${this.y}px;
+      width: ${this.size}px;
+      height: ${this.size}px;
+      background: hsl(${hue}, 100%, 50%);
+      border-radius: 50%;
+      opacity: 1;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    `;
+    particleContainer.appendChild(this.el);
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life--;
+    this.hue = (this.hue + 2) % 360; // slowly cycle hue
+    this.el.style.left = this.x + 'px';
+    this.el.style.top = this.y + 'px';
+    this.el.style.background = `hsl(${this.hue}, 100%, 50%)`;
+    this.el.style.opacity = Math.max(this.life / 50, 0);
+    this.el.style.transform = `translate(-50%, -50%) scale(${this.life/50})`;
+    if (this.life <= 0 || this.y > c.offsetHeight) {
+      this.el.remove();
+      return false;
+    }
+    return true;
+  }
+}
+
+// Track cursor inside panel
+let mouseX = -100, mouseY = -100;
+c.addEventListener('mousemove', e => {
+  const rect = c.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+  mouseY = e.clientY - rect.top;
+});
+
+// Animate particles
+let globalHue = 0; // controls overall color vibe
+function animateParticles() {
+  globalHue = (globalHue + 1) % 360; // slowly rotate RGB vibe
+  if (particles.length < maxParticles && mouseX >= 0 && mouseY >= 0) {
+    particles.push(new Particle(mouseX, mouseY, globalHue));
+  }
+  for (let j = particles.length - 1; j >= 0; j--) {
+    if (!particles[j].update()) particles.splice(j, 1);
+  }
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+  
+/* TITLE */
+const title=document.createElement('div');
+title.innerText="RACKZ COLOR FX";
 title.style.cssText=`
-font-weight:700; margin-bottom:10px; cursor:move;
-display:flex; justify-content:space-between; align-items:center;
-padding:4px 8px; border-radius:16px 16px 0 0; color:white;
-text-shadow:0 0 5px rgba(255,255,255,0.4); user-select:none;
+grid-column:span 4;
+text-align:center;
+font-weight:900;
+font-size:20px;
+letter-spacing:3px;
+background:linear-gradient(90deg,#ff00ff,#00ffff,#00ff00,#ffff00,#ff00ff);
+background-size:400%;
+-webkit-background-clip:text;
+color:transparent;
+animation:rainbowTitle 5s linear infinite;
+cursor:move;
+margin-bottom:8px;
+`;
+c.appendChild(title);
+  
+const statusBar = document.createElement('div');
+statusBar.style.cssText = `
+grid-column: span 4;
+text-align: center;
+font-size: 11px;
+font-weight: 700;
+letter-spacing: 1px;
+padding: 6px 10px;
+margin-bottom: 8px;
+border-radius: 10px;
+background: rgba(255,255,255,0.06);
+border: 1px solid rgba(255,255,255,0.08);
+color: #00ffff;
+box-shadow: inset 0 0 10px rgba(0,255,255,0.08);
+`;
+statusBar.innerText = `MODE: NONE | SPEED: ${s.toFixed(2)}`;
+c.appendChild(statusBar);
+
+/* BUTTON CREATOR */
+function btn(t){
+const b=document.createElement('button');
+b.innerText=t;
+b.style.cssText=`
+padding:8px 6px;
+border-radius:12px;
+border:1px solid #333;
+background:linear-gradient(145deg,#1a1a1a,#0f0f0f);
+color:#eee;
+font-size:11px;
+font-weight:700;
+cursor:pointer;
+`;
+return b;
+}
+
+/* BUTTONS */
+const rB=btn('RAIN'),bwB=btn('NIOR'),pB=btn('PULSE'),gB=btn('GLOW'),sB=btn('SHADE'),
+pgB=btn('P&G'),byB=btn('BLINK'),roB=btn('FIRE'),obB=btn('HUB'),
+galaxyB=btn('GALAXY'),oceanB=btn('OCEAN'),iceB=btn('ICE'),roseB=btn('ROSE'),lavaB=btn('LAVA'),
+candyB=btn('CANDY'),toxicB=btn('TOXIC'),cyberB=btn('CYBER'),stormB=btn('STORM'),
+laserB=btn('LASER'),lightningB=btn('LIGHTNING'),ultraB=btn('ULTRA RGB'),holeB=btn('BLACK HOLE'),
+auroraB=btn('AURORA');
+
+const controlsWrap = document.createElement('div');
+controlsWrap.style.cssText = `
+grid-column: span 4;
+display: flex;
+gap: 6px;
 `;
 
-/* ---------- BUTTONS ---------- */
-const buttonContainer = document.createElement("div"); buttonContainer.style.cssText="display:flex; gap:4px;";
-const minBtn = document.createElement("button"); minBtn.innerText="—"; minBtn.title="Minimize";
-const closeBtn = document.createElement("button"); closeBtn.innerText="✖"; closeBtn.title="Close";
-minBtn.style.cssText=closeBtn.style.cssText=`border:none; background:rgba(255,255,255,0.1); color:white; border-radius:6px; cursor:pointer; width:28px; height:28px; font-weight:bold; transition:0.2s;`;
-minBtn.onmouseover=closeBtn.onmouseover=e=>e.target.style.background='rgba(255,255,255,0.25)';
-minBtn.onmouseout=closeBtn.onmouseout=e=>e.target.style.background='rgba(255,255,255,0.1)';
+const minBtn = btn("—");
+const closeBtn = btn("✖");
 
-minBtn.onclick=()=>{
-    minimized = !minimized;
-    grid.style.display = minimized?"none":"grid";
-    speedBox.style.display = minimized?"none":"flex";
-    stopBtn.style.display = minimized?"none":"block";
-    saveBtn.style.display = minimized?"none":"block";
-    loadBtn.style.display = minimized?"none":"block";
+minBtn.style.flex = "1";
+closeBtn.style.flex = "1";
+
+controlsWrap.append(minBtn, closeBtn);
+
+/* SPEED SLIDER */
+const slCont=document.createElement('div');
+slCont.style.cssText=`grid-column:span 4;display:flex;gap:8px;margin-top:10px;align-items:center;`;
+const sl=document.createElement('input');
+sl.type='range';
+sl.min='0.05';
+sl.max='12';
+sl.step='0.05';
+sl.value=s;
+sl.style.flex='1';
+sl.oninput=()=>{
+  s = parseFloat(sl.value);
+  updateStatus();
 };
-closeBtn.onclick=()=>{ stopMode(); panel.remove(); };
+slCont.innerHTML='<span style="font-size:11px;color:#aaa">Speed</span>';
+slCont.append(sl);
 
-buttonContainer.appendChild(minBtn);
-buttonContainer.appendChild(closeBtn);
-title.appendChild(buttonContainer);
-panel.appendChild(title);
-
-/* ---------- TOP BAR RAINBOW ---------- */
-let rainbowHue=0;
-function animateTitleRainbow(){
-    rainbowHue=(rainbowHue+1)%360;
-    title.style.background=`linear-gradient(90deg,
-        hsl(${rainbowHue},100%,50%),
-        hsl(${(rainbowHue+60)%360},100%,50%),
-        hsl(${(rainbowHue+120)%360},100%,50%),
-        hsl(${(rainbowHue+180)%360},100%,50%),
-        hsl(${(rainbowHue+240)%360},100%,50%)
-    )`;
-    requestAnimationFrame(animateTitleRainbow);
+/* HELPER: set color */
+function f(x){
+  if (!i) return; // skip if no color input
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(i,x);
+  i.dispatchEvent(new Event('input', { bubbles: true }));
+  i.dispatchEvent(new Event('change', { bubbles: true }));
 }
-animateTitleRainbow();
-
-/* ---------- DRAGGING ---------- */
-let dragging=false, offsetX=0, offsetY=0;
-title.onmousedown = e => {
-    dragging = true;
-    const rect = panel.getBoundingClientRect();
-    offsetX = e.clientX - rect.left;
-    offsetY = e.clientY - rect.top;
-    panel.style.bottom = "auto";  // remove bottom so top works
-    panel.style.transform = "none"; // remove transform to allow free dragging
+  
+function updateStatus(customMode){
+  if (!statusBar) return;
+  const modeText = (customMode || m || "NONE").toUpperCase();
+  statusBar.innerText = `MODE: ${modeText} | SPEED: ${s.toFixed(2)}`;
+}
+  
+/* START / STOP MODES */
+// Safely stop any mode
+const stop = () => {
+    if (a) {
+        clearInterval(a); // stop the interval
+        a = null;
+    }
+    m = ""; // reset mode
+    stopHum(); // stop hum sound
+    // remove active class from all buttons
+    c.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+    updateStatus("NONE"); // update the status bar
 };
 
-document.onmousemove = e => {
-    if(!dragging) return;
-    panel.style.left = (e.clientX - offsetX) + "px";
-    panel.style.top = (e.clientY - offsetY) + "px";
+// Safely start a mode
+const startMode = (btn, key, logic) => {
+    if (m === key) { // if already active, stop it
+        stop();
+        return;
+    }
+    stop(); // stop any previous mode
+    m = key;
+    btn.classList.add("active"); // highlight this button
+    updateStatus(key); // update status bar
+    a = setInterval(logic, r); // start the mode logic
+    playClick();
+    playModeStart();
+    startHum();
 };
 
-document.onmouseup = () => {
-    dragging = false;
-};
-
-/* ---------- MODE BUTTON CREATOR ---------- */
-function addMode(name,logic,hotkey){
-    const b=document.createElement("button"); b.innerText=name;
-    b.style.cssText=`padding:6px; border:none; border-radius:12px; background:linear-gradient(45deg,#444,#222); color:white; font-size:11px; cursor:pointer; transition:0.2s;`;
-    b.onmouseover=e=>e.target.style.background='linear-gradient(45deg,#ff4b1f,#ff9068)';
-    b.onmouseout=e=>e.target.style.background='linear-gradient(45deg,#444,#222)';
-    b.onclick=()=>startMode(name,logic);
-    grid.appendChild(b);
-    if(hotkey) document.addEventListener("keydown",e=>{ if(e.key===hotkey) startMode(name,logic); });
+/* COLOR MODES HELPER */
+function swapButton(btn,colors,key){
+let index=0,last=Date.now();
+btn.onclick=()=>startMode(btn,key,()=>{
+let now=Date.now();
+if(now-last>=100/s){
+f(colors[index]);
+btn.style.background=colors[index];
+index=(index+1)%colors.length;
+last=now;
+}
+});
 }
 
-/* ---------- MODES ---------- */
-addMode("RAIN",()=>{h=(h+speed)%360; setColor(hslToHex(h,100,50));},"1");
-addMode("RAVE",()=>{h=(h+speed*15)%360; setColor(hslToHex(h,100,50));},"2");
-addMode("WAVE",()=>{h=(h+speed)%360; setColor(hslToHex(h,100,50+Math.sin(h/20)*20));});
-addMode("GALAXY",()=>{h=(h+speed)%360; setColor(hslToHex(240+Math.sin(h/15)*80,100,60));});
-addMode("OCEAN",()=>{h=(h+speed)%100; setColor(hslToHex(180+h/2,100,50));});
-addMode("ICE",()=>{h=(h+speed)%50; setColor(hslToHex(190+h,80,80));});
-addMode("LAVA",()=>{h=(h+speed)%60; setColor(hslToHex(h,100,50));});
-addMode("FIRE",()=>{const c=Math.random()>.5?"#ff4000":"#ff9000"; setColor(c);});
-addMode("STROBE",()=>{const c=Math.random()>.5?"#ffffff":"#000000"; setColor(c);});
-addMode("GLITCH",()=>{const c=`#${Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")}`; setColor(c);});
-addMode("CANDY",()=>{h=(h+speed*.6)%360; setColor(hslToHex(h,80,70));});
-addMode("NEON",()=>{h=(h+speed)%360; setColor(hslToHex(h,100,65));});
-addMode("TOXIC",()=>{h=(h+speed)%40; setColor(hslToHex(100+h,100,50));});
-addMode("VOID",()=>{const c=Math.random()>.5?"#000000":"#220022"; setColor(c);});
-    
-// Extra modes
-addMode("B&W", () => {
-    // Smooth black-white using sine wave
-    const l = 50 + Math.sin(h/10)*50; // ranges from 0 to 100
-    setColor(hslToHex(0,0,l)); // 0 saturation = grayscale
-    h = (h + speed) % 360;
-}, "3");
-addMode("PULSE",()=>{h=(h+speed)%360; const l=50+Math.sin(h/10)*40; setColor(hslToHex(0,0,l));});
-addMode("SUNSET",()=>{h=(h+speed)%100; setColor(hslToHex(10+h/2,100,60));});
-addMode("FOREST",()=>{h=(h+speed)%60; setColor(hslToHex(110+h,70,40));});
-addMode("GOLD",()=>{h=(h+speed)%30; setColor(hslToHex(45+h,90,60));});
-addMode("PASTEL",()=>{h=(h+speed*.5)%360; setColor(hslToHex(h,60,80));});
-addMode("BERRY",()=>{h=(h+speed)%60; setColor(hslToHex(320+h,80,55));});
-addMode("CYBER",()=>{const colors=["#00ffff","#ff00ff","#00ff9f","#ff0088"]; setColor(colors[Math.floor(Math.random()*colors.length)]);});
-addMode("STORM",()=>{const colors=["#222222","#444444","#666666","#aaaaaa"]; setColor(colors[Math.floor(Math.random()*colors.length)]);});
-addMode("LASER",()=>{const colors=["#ff0000","#00ff00","#00ffff"]; setColor(colors[Math.floor(Math.random()*colors.length)]);});
-    
-/* ---------- BUILD PANEL ---------- */
-panel.appendChild(grid);
-panel.appendChild(stopBtn);
-panel.appendChild(speedBox);
-panel.appendChild(saveBtn);
-panel.appendChild(loadBtn);
-document.body.appendChild(panel);
+/* ADD COLOR MODES */
+swapButton(galaxyB,['#6a00ff','#0044ff','#ff00cc','#220044'],'galaxy');
+swapButton(oceanB,['#0044ff','#0088ff','#00ccff','#0066aa'],'ocean');
+swapButton(iceB,['#ccffff','#99ddff','#66ccff','#ffffff'],'ice');
+swapButton(roseB,['#ff69b4','#ffb6c1','#ffffff','#ffb6c1','#ff69b4'],'rose');
+swapButton(lavaB,['#ff0000','#ff3300','#ff6600','#aa0000'],'lava');
+swapButton(candyB,['#ff66cc','#ff99ff','#ff66ff','#ff33cc'],'candy');
+swapButton(toxicB,['#39ff14','#00ff00','#66ff00','#003300'],'toxic');
+swapButton(cyberB,['#00ffff','#ff00ff','#00ff9f','#ff0088'],'cyber');
+swapButton(stormB,['#4444ff','#6666ff','#8888ff','#aaaaff'],'storm');
+swapButton(laserB,['#ff0000','#00ff00','#00ffff'],'laser');
+swapButton(pgB,['#ff1493','#00ff00'],'pg');
+swapButton(obB,['#FFA500','#000000'],'hub');
 
+/* AURORA */
+auroraB.onclick=()=>startMode(auroraB,"aurora",()=>{
+h=(h+s*0.6)%360;
+let hue=140+Math.sin(h/30)*80;
+let light=45+Math.sin(h/20)*15;
+let col=g(hue,90,light);
+f(col);
+auroraB.style.background=col;
+});
+
+/* RAIN */
+rB.onclick=()=>startMode(rB,"rain",()=>{h=(h+s)%360;let col=g(h,100,50);f(col);rB.style.background=col;});
+
+/* BLINK */
+byB.onclick=()=>{let base=i.value,index=0,last=Date.now();startMode(byB,'blink',()=>{let now=Date.now();if(now-last>=100/s){let c=index?'#ffff00':base;f(c);byB.style.background=c;index=!index;last=now;}});};
+
+/* FIRE */
+roB.onclick=()=>{const colors=['#ff0000','#ff4500','#ffa500'];let index=0,last=Date.now();startMode(roB,"fire",()=>{let now=Date.now();if(now-last>=100/s){let col=colors[index];f(col);roB.style.background=col;index=(index+1)%colors.length;last=now;}});};
+
+/* NIOR */
+bwB.onclick=()=>{l=0;d=1;startMode(bwB,"bw",()=>{l+=(s*d);if(l>=100){l=100;d=-1}if(l<=0){l=0;d=1}let col=g(0,0,l);f(col);bwB.style.background=col;});};
+
+/* PULSE */
+pB.onclick=()=>{let st=toHsl(i.value);l=st[2];ceil=st[2];d=-1;startMode(pB,"pulse",()=>{l+=(s*d);if(l>=ceil){l=ceil;d=-1}if(l<=0){l=0;d=1}let col=g(st[0],st[1],l);f(col);pB.style.background=col;});};
+
+/* GLOW */
+gB.onclick=()=>{let st=toHsl(i.value);l=st[2];floor=st[2];d=1;startMode(gB,"glow",()=>{l+=(s*d);if(l>=100){l=100;d=-1}if(l<=floor){l=floor;d=1}let col=g(st[0],st[1],l);f(col);gB.style.background=col;});};
+
+/* SHADE */
+sB.onclick=()=>{let st=toHsl(i.value);l=st[2];ceil=st[2];floor=Math.max(0,st[2]-25);d=-1;startMode(sB,"shade",()=>{l+=(s*d*0.5);if(l>=ceil){l=ceil;d=-1}if(l<=floor){l=floor;d=1}let col=g(st[0],st[1],l);f(col);sB.style.background=col;});};
+
+/* ULTRA RGB */
+ultraB.onclick=()=>startMode(ultraB,"ultra",()=>{h=(h+(s*8))%360;let col=g(h,100,50);f(col);ultraB.style.background=col;});
+
+/* LIGHTNING */
+lightningB.onclick=()=>startMode(lightningB,"lightning",()=>{let col=Math.random()>.85?'#ffffff':'#111111';f(col);lightningB.style.background=col;});
+
+/* BLACK HOLE */
+holeB.onclick=()=>startMode(holeB,"hole",()=>{h=(h+s)%360;let col=g(270+Math.sin(h/10)*60,100,20+Math.sin(h/15)*20);f(col);holeB.style.background=col;});
+
+/* BUILD PANEL */
+c.append(rB,bwB,pB,gB,sB,pgB,byB,roB,obB,
+galaxyB,oceanB,iceB,roseB,lavaB,candyB,toxicB,cyberB,
+stormB,laserB,lightningB,ultraB,holeB,auroraB,
+slCont,controlsWrap);
+  
+document.addEventListener('keydown', e => {
+  if(e.key === "Escape"){
+    wrap.style.display = (wrap.style.display === "none") ? "block" : "none";
+  }
+});
+  
+/* HATS */
+const hats=[
+"https://tokaa.pw/assets/sktextures/hats/cowboy.png",
+"https://tokaa.pw/assets/sktextures/hats/devil.png",
+"https://tokaa.pw/assets/sktextures/hats/kite.png",
+"https://tokaa.pw/assets/sktextures/hats/militaryHat.png",
+"https://tokaa.pw/assets/sktextures/hats/onigiri.png",
+"https://tokaa.pw/assets/sktextures/hats/sakura.png",
+"https://tokaa.pw/assets/sktextures/hats/taria.png",
+"https://tokaa.pw/assets/sktextures/hats/solar.png",
+"https://tokaa.pw/assets/sktextures/hats/crown.png"
+];
+const hatElems=hats.map(src=>{const img=document.createElement('img');img.src=src;img.style.cssText='position:absolute;width:48px;height:48px;pointer-events:none;';c.appendChild(img);return img;});
+
+// BOUNCING HATS
+let hatAngle=0;
+let hatDX = 0.2; // horizontal speed
+let hatDY = 0.15; // vertical speed
+let hatPositions = hatElems.map(()=>({x:Math.random()*400,y:Math.random()*200,dx:hatDX,dy:hatDY}));
+
+function moveHats(){
+hatPositions.forEach((pos,i)=>{
+  pos.x += pos.dx;
+  pos.y += pos.dy;
+  if(pos.x<0 || pos.x>c.offsetWidth-48) pos.dx*=-1;
+  if(pos.y<0 || pos.y>c.offsetHeight-48) pos.dy*=-1;
+  hatElems[i].style.left = pos.x+"px";
+  hatElems[i].style.top = pos.y+"px";
+});
+requestAnimationFrame(moveHats);
+}
+moveHats();
+
+/* CLOSE BUTTON */
+closeBtn.onclick=()=>{
+playClick();
+playClose();
+stop();
+wrap.remove();
+hatElems.forEach(h=>h.remove());
+};
+  
+let minimized = false;
+let savedDisplay = [];
+
+minBtn.onclick = () => {
+  minimized = !minimized;
+
+  const children = [...c.children].filter(el => el !== title && el !== statusBar && el !== controlsWrap);
+
+  if (minimized) {
+    savedDisplay = children.map(el => el.style.display);
+    children.forEach(el => el.style.display = "none");
+
+    c.style.minWidth = "220px";
+    c.style.display = "block";
+    title.style.marginBottom = "0";
+    minBtn.innerText = "+";
+  } else {
+    children.forEach((el, idx) => el.style.display = savedDisplay[idx] || "");
+    c.style.display = "grid";
+    c.style.gridTemplateColumns = "repeat(4,1fr)";
+    c.style.minWidth = "420px";
+    title.style.marginBottom = "8px";
+    minBtn.innerText = "—";
+  }
+};
+  
+/* DRAG PANEL */
+let dragging=false,ox=0,oy=0;
+title.onmousedown=e=>{dragging=true;ox=e.clientX-wrap.offsetLeft;oy=e.clientY-wrap.offsetTop;};
+document.onmousemove=e=>{if(!dragging)return;wrap.style.left=(e.clientX-ox)+'px';wrap.style.top=(e.clientY-oy)+'px';};
+document.onmouseup=()=>dragging=false;
+
+/* HSL CONVERTERS */
+function g(h,s,l){s/=100;l/=100;const k=n=>(n+h/30)%12;const a=s*Math.min(l,1-l);const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));const toHex=x=>Math.round(255*x).toString(16).padStart(2,'0');return "#"+toHex(f(0))+toHex(f(8))+toHex(f(4));}
+function toHsl(H){let r=0,g=0,b=0;if(H.length==4){r="0x"+H[1]+H[1]; g="0x"+H[2]+H[2]; b="0x"+H[3]+H[3];}else{r="0x"+H[1]+H[2]; g="0x"+H[3]+H[4]; b="0x"+H[5]+H[6];}r/=255; g/=255; b/=255;let cmin=Math.min(r,g,b), cmax=Math.max(r,g,b), delta=cmax-cmin, h=0,s=0,l=0;if(delta==0) h=0; else if(cmax==r) h=((g-b)/delta)%6; else if(cmax==g) h=(b-r)/delta+2; else h=(r-g)/delta+4; h=Math.round(h*60); if(h<0) h+=360; l=(cmax+cmin)/2; s=delta==0?0:delta/(1-Math.abs(2*l-1)); s=Math.round(s*100); l=Math.round(l*100); return[h,s,l];}
 })();
